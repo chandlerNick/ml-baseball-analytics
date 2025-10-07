@@ -1,0 +1,227 @@
+---
+title: "baseballr_functions"
+output: html_document
+date: "2025-10-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,      # show code
+  results = 'hide', # hide printed output
+  message = FALSE,  # hide messages
+  warning = FALSE   # hide warnings
+)
+```
+
+## Lahman package
+This package contains season level team and player data starting in 1871. Definitely not good enough to make meaningful predictions or insights. Would need to add more fine grained data. Does have potential target variables though: era, avg, season record, war 
+
+```{r}
+#install Lahman package if needed
+#install.packages("Lahman")
+```
+
+```{r}
+#load the data
+library(Lahman)
+#see all available datasets
+data(package = "Lahman")
+```
+
+### Data Sets in Lahman package
+Data sets in package ‘Lahman’:
+
+| Dataset                  | Description                   |
+|---------------------------|-------------------------------|
+| AllstarFull               | AllstarFull table             |
+| Appearances               | Appearances table             |
+| AwardsManagers            | AwardsManagers table          |
+| AwardsPlayers             | AwardsPlayers table           |
+| AwardsShareManagers       | AwardsShareManagers table     |
+| AwardsSharePlayers        | AwardsSharePlayers table      |
+| Batting                   | Batting table                 |
+| BattingPost               | BattingPost table             |
+| CollegePlaying            | CollegePlaying table          |
+| Fielding                  | Fielding table                |
+| FieldingOF                | FieldingOF table              |
+| FieldingOFsplit           | FieldingOFsplit table         |
+| FieldingPost              | FieldingPost data             |
+| HallOfFame                | Hall of Fame Voting Data      |
+| HomeGames                 | HomeGames table               |
+| LahmanData                | Lahman Datasets               |
+| Managers                  | Managers table                |
+| ManagersHalf              | ManagersHalf table            |
+| Parks                     | Parks table                   |
+| People                    | People table                  |
+| Pitching                  | Pitching table                |
+| PitchingPost              | PitchingPost table            |
+| Salaries                  | Salaries table                |
+| Schools                   | Schools table                 |
+| SeriesPost                | SeriesPost table              |
+| Teams                     | Teams table                   |
+| TeamsFranchises           | TeamFranchises table          |
+| TeamsHalf                 | TeamsHalf table               |
+| battingLabels             | Variable Labels               |
+| fieldingLabels            | Variable Labels               |
+| pitchingLabels            | Variable Labels               |
+
+
+```{r}
+head(Batting, 20)
+```
+
+## retrosheet package
+This package allows you to access retrosheet data from https://www.retrosheet.org/ .
+You can access game level and play level data.
+Play level data is a bit messy.
+In general, the retrosheet package seems a bit outdated. Retrosheet data can be accessed with baseballr instead.
+
+
+```{r}
+#install retrosheet package if needed
+#install.packages("retrosheet")
+```
+
+```{r}
+#load the package
+library(retrosheet)
+# Get game level data for all teams for a season
+games_24 <- retrosheet::get_retrosheet(type = "game", year=2024)
+head(games_24, 20)
+# Get play level data for one team for a season
+plays_lan_24 <- retrosheet::get_retrosheet(type = "play", year=2023, team = "LAN")
+head(plays_lan_24)
+```
+
+## baseballr package
+Should use the latest baseballr package: https://github.com/BillPetti/baseballr
+baseballr has tools to access baseball data from many different sources:
+
+The Data
+There are generally speaking eight men’s baseball data sources accessible from this package:
+
+baseballr-data repo (@SportsDataverse)
+MLB Stats API
+Baseball Savant’s Statcast
+Chadwick Bureau’s Public Register of Baseball Players
+Baseball Reference
+FanGraphs
+Retrosheet
+NCAA
+
+See here for comprehensive list of functions to access data with baseballr: 
+https://billpetti.github.io/baseballr/reference/index
+
+
+```{r}
+#install package if needed
+#install.packages("baseballr")
+
+
+#Install latest baseballr package
+
+#Install/update helpers & deps
+#install.packages(c("remotes", "xml2", "rvest", "httr", "jsonlite"), repos = "https://cloud.r-project.org")
+
+#Install the latest baseballr (GitHub fork is most up-to-date)
+#remotes::install_github("BillPetti/baseballr")
+
+```
+
+### Fangraphs 
+Fangraphs has season level team and player stats comparable to what is in the Lahman package. However it has more advanced analytics as well.
+
+!!!403 error; blocked by anti-bot measures
+
+```{r}
+#load the packages
+library(baseballr)
+
+#get fangraphs data: season team and player level; batting and pitching stats are accessed seperately
+#team batting stats
+#team_batting_stats <- baseballr::fg_team_batter(startseason = 2020, endseason = 2020)
+#head(team_batting_stats)
+
+#team pitching stats
+#team_pitching_stats <- baseballr::fg_team_pitcher(startseason = 2023, endseason = 2023)
+#head(team_pitching_stats)
+
+#team_results_2024 <- baseballr::bref_team_results(Tm = "NYM", year = 2025)
+#head(team_results_2024)
+
+```
+
+### Retrosheet data
+Needs ChadwickCLI
+Can get same data from retrosheet package
+```{r}
+#baseballr::retrosheet_data()
+```
+
+
+### Baseball Reference
+Season level team and player data. Only has basic metrics. Similar to data in Lahman package
+
+```{r}
+baseballr::bref_daily_batter(t1="2024-June-01", t2="2024-July-01")
+baseballr::bref_daily_pitcher(t1="2024-June-01", t2="2024-July-01")
+baseballr::bref_team_results(Tm = "NYM", year = 2024)
+```
+
+
+### MLB Stats
+Can get similar data to other databases
+Is good for game specific and current game stats
+Has a lot of other league related information
+```{r}
+# general function to get high level stats
+baseballr::mlb_stats(
+  stat_type = "season",   # "season", "career", "game", "byDateRange"
+  player_pool = "all",    # all MLB players
+  game_type = "R",        # "R" → Regular season, "P" → Postseason, "S" → Spring training, "E" → Exhibition
+  stat_group = "hitting", # "hitting", "pitching", "fielding"
+  season = 2023,          
+  sport_ids = 1,          # MLB
+  limit = 2000            # get all players
+)
+
+# get stats for a single player in a single game, need specific person and game id numbers
+baseballr::mlb_player_game_stats(person_id = 660271, game_pk = 717273) #ohtani person_id=660271
+# stat for specific player in an ongoing game
+mlb_player_game_stats_current(person_id = 660271)
+
+# team stats
+baseballr::mlb_team_stats(
+  team_id = 119, # dodgers team_id=119
+  stat_type = "season", # can specify season, data_range, vsTeam, ...
+  game_type = "R", # "R" → Regular season, "P" → Postseason, "S" → Spring training, "E" → Exhibition
+  stat_group = "hitting", # "hitting", "pitching", "fielding"
+  season = 2023,
+  sport_ids = 1 #league: 1 is MLB
+)
+
+
+#play by play data for specific game
+baseballr::mlb_pbp(game_pk = 717273)
+
+# all player info, not stats: weight, handedness,...
+baseballr::mlb_sports_players(sport_id = 1, season = 2025)
+
+```
+
+
+### Baseball Savant’s Statcast
+Extremely fine grained play by play pitching and batting stats
+
+```{r}
+# get all advanced play by play data for specific player in given date range
+baseballr::statcast_search(start_date = "2025-10-05", 
+                      end_date = "2025-10-06", 
+                      playerid = 660271, 
+                      player_type = 'batter')
+
+baseballr::statcast_search(start_date = "2025-10-04", 
+                      end_date = "2025-10-06", 
+                      playerid = 660271, 
+                      player_type = 'pitcher')
+```
