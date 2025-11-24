@@ -1,26 +1,18 @@
-# 1. Install and load packages
-library(Lahman)
+library(baseballr)
 library(dplyr)
-library(tidyr)
-library(mboost)
-library(data.table)
-library(stats)
+library(readr)
 
-# 2. Data Preparation
-new_batters <- Batting %>%
-  filter(yearID >= 2020, AB > 100) %>%
-  group_by(playerID) %>%
-  arrange(playerID, yearID) %>%
-  mutate(target = lead(H, order_by = yearID)) %>%  # Target is the number of hits in the following season.
-  filter(!is.na(target))
+bat_2020_2025 <- fg_batter_leaders(
+  startseason = "2020",
+  endseason   = "2025",
+  pos         = "all",
+  stats       = "bat",
+  lg          = "all",
+  qual        = "0",     # no PA minimum, get everyone
+  ind         = "1",     # return season-level rows, not aggregate
+  pageitems   = "10000", # avoid pagination
+  pagenum     = "1",
+)
 
-# 3. Create Training and Test Sets - Make sure to drop ids (year, team, player, league)
-train_data <- new_batters %>%
-  filter(yearID < 2023)
-
-test_data <- new_batters %>%
-  filter(yearID >= 2023)
-
-dim(new_batters)
-
-head(new_batters)
+# Write to CSV
+write_csv(bat_2020_2025, "fangraphs_batters_2020_2025.csv")
