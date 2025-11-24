@@ -13,6 +13,7 @@ R-Packages:
 - Game-Level: retrosheet
 - Player/Team-Level: Lahman
 - Pitch-by-Pitch: baseballr (Too much detail?)
+- [Here](https://www.fangraphs.com/leaders/major-league?pos=all&stats=bat&lg=all&type=0&ind=1&team=0%2Cto&rost=0&players=0&postseason=&startdate=&enddate=&month=0&qual=100&pageitems=2000000000&season1=2020&season=2025)
 
 ## Features
 
@@ -44,3 +45,6 @@ R-Packages:
 - Bayesian Classifier
 
 - Gradient Boosted Trees
+
+
+

@@ -1,26 +1,14 @@
-# 1. Install and load packages
-library(Lahman)
 library(dplyr)
-library(tidyr)
-library(mboost)
-library(data.table)
-library(stats)
+library(readr)
 
-# 2. Data Preparation
-new_batters <- Batting %>%
-  filter(yearID >= 2020, AB > 100) %>%
-  group_by(playerID) %>%
-  arrange(playerID, yearID) %>%
-  mutate(target = lead(H, order_by = yearID)) %>%  # Target is the number of hits in the following season.
-  filter(!is.na(target))
+data <- read.csv("merged.csv")
 
-# 3. Create Training and Test Sets - Make sure to drop ids (year, team, player, league)
-train_data <- new_batters %>%
-  filter(yearID < 2023)
+dim(data)
 
-test_data <- new_batters %>%
-  filter(yearID >= 2023)
+summary(data)
 
-dim(new_batters)
+head(data)
 
-head(new_batters)
+### EDA here - maybe in RMD?
+
+range(data$Season)
