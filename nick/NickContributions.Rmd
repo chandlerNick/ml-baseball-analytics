@@ -7,26 +7,119 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(dplyr)
+library(corrplot)
 ```
 
 ## EDA
+Here we do a short exploratory analysis of the data to understand some of the basic characteristics.
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r}
+```{r, echo=FALSE}
+data <- read.csv("merged.csv")
 ```
+
+```{r, echo=FALSE}
+num_unique_players <- data %>%
+  distinct(Name) %>%       # keep only unique player names
+  nrow()                   # count them
+```
+The dataset has `r nrow(data)` rows, `r ncol(data)` columns, and contains `r num_unique_players` unique players.
+
+```{r, echo=FALSE}
+
+descriptions <- c(
+"Season of the game",
+"Player name",
+"Team abbreviation",
+"Games played",
+"At bats",
+"Hits",
+"Singles",
+"Doubles",
+"Triples",
+"Home runs",
+"Runs scored",
+"RBIs",
+"Walks",
+"Intentional walks",
+"Strikeouts",
+"Hit by pitch",
+"Sacrifice flies",
+"Sacrifice hits",
+"Grounded into double plays",
+"Stolen bases",
+"Caught stealing",
+"Plate appearances",
+"Walk percentage",
+"Strikeout percentage",
+"Walk/Strikeout ratio",
+"Batting average",
+"On-base percentage",
+"Slugging percentage",
+"OPS",
+"Isolated power",
+"Speed score",
+"BABIP",
+"Ultimate base running",
+"Weighted GDP",
+"Expected runs (XBR)",
+"Weighted SB",
+"Weighted runs created",
+"Weighted RAA",
+"Weighted OBA",
+"Weighted RC%",
+"Next season AVG"
+)
+head_data <- head(data)
+head_data_with_desc <- rbind(descriptions, head_data)
+kable(t(head_data_with_desc), caption = "Transposed view of first 6 rows")
+```
+
+```{r, echo = FALSE}
+players_per_season <- data %>%
+  distinct(Name, Season, .keep_all = TRUE) %>%  # drop duplicates if needed
+  group_by(Season) %>%
+  summarise(Number_of_Players = n_distinct(Name)) %>%
+  arrange(Season)
+
+# Render as a clean table
+kable(t(players_per_season), caption = "Total number of players in each season")
+```
+
+
+
+Correlation plots using Pearson's correlation coefficient.
+```{r, echo = FALSE}
+numeric_data <- data[, sapply(data, is.numeric)]
+
+cor_matrix_pearson <- cor(numeric_data, use = "pairwise.complete.obs", method = "pearson")
+corrplot(cor_matrix_pearson, method = "color", tl.cex = 0.6)
+```
+
 
 ## Mathematical Description of Gradient Boosting Decesion Trees
+In this section we give a short mathematical description of Gradient Boosting Decision Trees (focusing on the gradient boosting aspect). This does not include complexities introduced with runtime optimization as in XGBoost.
 
-You can also embed plots, for example:
+Suppose our training data is given by: $\left\{ (\vec{x_i}, y_i) \right\}_{i=1}^n$
 
-```{r}
-plot(pressure)
-```
+Gradient boosting builds an additive sequential model interatively, aiming to minimize a loss function: $L(y, F(x))$. Specifically, gradient boosting builds a model (defined recursively):
+$$F_m(x) = F_{m-1}(x) + \eta \cdot \gamma_m \cdot h_m(x)$$
+with,
+$$F_0(x) = \underset{\gamma}{\arg \min} \sum_{i=1}^{n} L (y_i, \gamma)$$
+The two step process (for each iteration) to fit the model consists of:
+1. Building weak learners $h_m(x)$.
+2. Finding the optimal step size at that iteration $\gamma_m$.
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+For step 1. we must compute the pseudo residual: 
+$$\tilde{y}_{im} = - \left[ \frac{ \partial L(y_i, F(x_i)) }{ \partial F(x_i) } \right]_{F(x) = F_{m-1}(x)}$$
+and then fit the wewak learner $h_m(x)$ (in our case, a tree model) to the given pseudo residual. 
+
+We then do step 2. to find the optimal step size $\gamma_m$ using an optimizer to solve:
+$$\underset{\gamma}{\arg \min} \sum_{i = 1}^{n} L(y_i, F_{m-1}(x_i) + \gamma h_m(x_i))$$
+Finally, the $\eta$ given in the original equation is a hyperparameter and must be tuned.
+
+
 
 ## Mathematical Description of Regularized Regression
 
