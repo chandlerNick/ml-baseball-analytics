@@ -1,0 +1,91 @@
+---
+title: "NickContributions"
+author: "Nick Chandler"
+date: "2025-12-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## EDA
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+```
+
+## Mathematical Description of Gradient Boosting Decesion Trees
+
+You can also embed plots, for example:
+
+```{r}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+## Mathematical Description of Regularized Regression
+
+NOTE TO SELF: All equations can be derived from the ESL textbook
+
+This section examines the mathematical background for the regularized regression model types of: Ridge, Lasso, and Elastic-Net regression. All assume a model of the form (here, without interaction terms):
+$$y = \beta_0 + \sum_{i=1}^{p} \beta_i x_i + \varepsilon.$$
+Where the $\beta_i$s are found by solving (though specific instances introduce additional terms):
+$$\min_\vec{\beta} \left\|  X\vec{\beta} - \vec{y} \right\|^2_2\text{, with } X \in \mathbb{R}^{n \times p} \text{ the design matrix}$$
+The general solution is given (analytically) by:
+$$\hat{\vec{\beta}} = \left(X^T X \right)^{-1} X^T\vec{y}$$
+We now explain the various cases of regularization.
+
+### Ridge Regression
+The Ridge regression penalizes the size of the parameters with an L2 norm. Specifically the optimization problem is given by,
+$$\min_{\vec{\beta}} \left\| X\vec{\beta} - \vec{y} \right\|_2^2 + \lambda \| \vec{\beta} \|_2^2$$
+
+The analytical solution is given by:
+$$ \vec{\beta} = \left(  X^TX + \lambda I \right)^{-1}X^T\vec{y} $$
+Note that in the previous two equations, $\lambda$ is a hyperparameter that can be tuned with cross validation. We now proceed to Lasso Regression.
+
+### Lasso Regression
+The Lasso regression penalizes the size of the parameters with an L1 norm. The optimization problem is:
+$$\min_{\vec{\beta}} \left\| X\vec{\beta} - \vec{y} \right\|_2^2 + \lambda \| \vec{\beta} \|_1$$
+Since the L1 norm is not differentiable at $0$, there is no closed-form, analytical solution to the above problem. One can use solvers for convex problems capable of dealing with non-smooth objectives. The optimality condition is given by: 
+
+$$
+0 \in 2 X^\top (X \hat{\beta} - y) + \lambda\, \partial \|\hat{\beta}\|_1,
+\quad
+(\partial \|\hat{\beta}\|_1)_i =
+\begin{cases}
+\{1\}, & \hat{\beta}_i > 0,\\[1mm]
+\{-1\}, & \hat{\beta}_i < 0,\\[1mm]
+[-1,1], & \hat{\beta}_i = 0
+\end{cases}
+$$
+
+Again, $\lambda$ is a hyperparameter that can be tuned with cross validation. We now move onto the generalization of the previous two regularization methods, elastic-net regression.
+
+### Elastic-Net Regression
+The elastic-net regression uses a convex combination of the lasso penalty (L1) and ridge penalty (L2). Specifically, the optimization problem is given by:
+$$\min_{\vec{\beta}} \left\| X\vec{\beta} - \vec{y} \right\|_2^2 + \lambda \left( \left(1 - \alpha  \right) \| \vec{\beta} \|_1 + \alpha\|\vec{\beta}  \|_2^2 \right)$$
+
+We again have the L1 norm which is not differentiable at $0$. Thereby a convex solver capable of optimizing non-smooth objectives should be used. The optimality condition is given by:
+Since the L1 norm is not differentiable at $0$, there is no closed-form, analytical solution to the above problem. Once again solvers for convex problems capable of dealing with non-smooth objectives must be applied. The optimality condition is given by: 
+
+$$
+0 \in 2 X^\top (X \hat{\beta} - y) +  \lambda \left( 2 \alpha \hat{\vec{\beta}} + (1 - \alpha) \partial \|\hat{\beta}\|_1 \right),
+\quad
+(\partial \|\hat{\beta}\|_1)_i =
+\begin{cases}
+\{1\}, & \hat{\beta}_i > 0,\\[1mm]
+\{-1\}, & \hat{\beta}_i < 0,\\[1mm]
+[-1,1], & \hat{\beta}_i = 0
+\end{cases}
+$$
+
+The parameters $\lambda$ and $\alpha$ are hyperparameters to be tuned via cross validation.
+
+
+
+
