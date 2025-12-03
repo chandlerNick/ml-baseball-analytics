@@ -13,6 +13,9 @@ library(corrplot)
 library(glmnet)
 ```
 
+## Introduction
+In this report, we examine the application of two statistical learning methods to baseball data from the years 2020-2024. Specifically we are interested in predicting the next season's batting average of arbitrary players given the standard and advanced metrics of the previous season from this [source](). The report begins with a quick exploratory data analysis (EDA), it then moves into a mathematical description of the statistical learning methods applied, then the application of each method, and finally a performance evaluation and description. This report illustrates how classical, interpretable methods can be applied, and then how more modern (and less interpretable) methods can be applied for better performance, and with the help of XAI, also be interpretable.
+
 ## EDA
 Here we do a short exploratory analysis of the data to understand some of the basic characteristics.
 
@@ -98,30 +101,6 @@ cor_matrix_pearson <- cor(numeric_data, use = "pairwise.complete.obs", method = 
 corrplot(cor_matrix_pearson, method = "color", tl.cex = 0.6)
 ```
 
-
-## Mathematical Description of Gradient Boosting Decesion Trees
-In this section we give a short mathematical description of Gradient Boosting Decision Trees (focusing on the gradient boosting aspect). This does not include complexities introduced with runtime optimization as in XGBoost.
-
-Suppose our training data is given by: $\left\{ (\vec{x_i}, y_i) \right\}_{i=1}^n$
-
-Gradient boosting builds an additive sequential model interatively, aiming to minimize a loss function: $L(y, F(x))$. Specifically, gradient boosting builds a model (defined recursively):
-$$F_m(x) = F_{m-1}(x) + \eta \cdot \gamma_m \cdot h_m(x)$$
-with,
-$$F_0(x) = \underset{\gamma}{\arg \min} \sum_{i=1}^{n} L (y_i, \gamma)$$
-The two step process (for each iteration) to fit the model consists of:
-1. Building weak learners $h_m(x)$.
-2. Finding the optimal step size at that iteration $\gamma_m$.
-
-For step 1. we must compute the pseudo residual: 
-$$\tilde{y}_{im} = - \left[ \frac{ \partial L(y_i, F(x_i)) }{ \partial F(x_i) } \right]_{F(x) = F_{m-1}(x)}$$
-and then fit the wewak learner $h_m(x)$ (in our case, a tree model) to the given pseudo residual. 
-
-We then do step 2. to find the optimal step size $\gamma_m$ using an optimizer to solve:
-$$\underset{\gamma}{\arg \min} \sum_{i = 1}^{n} L(y_i, F_{m-1}(x_i) + \gamma h_m(x_i))$$
-Finally, the $\eta$ given in the original equation is a hyperparameter and must be tuned.
-
-
-
 ## Mathematical Description of Regularized Regression
 
 NOTE TO SELF: All equations can be derived from the ESL textbook
@@ -181,6 +160,31 @@ $$
 The parameters $\lambda$ and $\alpha$ are hyperparameters to be tuned via cross validation.
 
 
+## Mathematical Description of Gradient Boosting Decesion Trees
+In this section we give a short mathematical description of Gradient Boosting Decision Trees (focusing on the gradient boosting aspect). This does not include complexities introduced with runtime optimization as in XGBoost.
+
+Suppose our training data is given by: $\left\{ (\vec{x_i}, y_i) \right\}_{i=1}^n$
+
+Gradient boosting builds an additive sequential model interatively, aiming to minimize a loss function: $L(y, F(x))$. Specifically, gradient boosting builds a model (defined recursively):
+$$F_m(x) = F_{m-1}(x) + \eta \cdot \gamma_m \cdot h_m(x)$$
+with,
+$$F_0(x) = \underset{\gamma}{\arg \min} \sum_{i=1}^{n} L (y_i, \gamma)$$
+The two step process (for each iteration) to fit the model consists of:
+1. Building weak learners $h_m(x)$.
+2. Finding the optimal step size at that iteration $\gamma_m$.
+
+For step 1. we must compute the pseudo residual: 
+$$\tilde{y}_{im} = - \left[ \frac{ \partial L(y_i, F(x_i)) }{ \partial F(x_i) } \right]_{F(x) = F_{m-1}(x)}$$
+and then fit the wewak learner $h_m(x)$ (in our case, a tree model) to the given pseudo residual. 
+
+We then do step 2. to find the optimal step size $\gamma_m$ using an optimizer to solve:
+$$\underset{\gamma}{\arg \min} \sum_{i = 1}^{n} L(y_i, F_{m-1}(x_i) + \gamma h_m(x_i))$$
+Finally, the $\eta$ given in the original equation is a hyperparameter and must be tuned.
+
+
+
+
+
 ## Train-Val-Test Split
 
 We split the data into a train set (60%), validation (val) set (20%), and a test set (20%). Specifically, we adhere to the following condition when deciding on the splits: A player may occur in no more than one set. Additionally, the newest data (that from the 2024 season) is saved for the test set. In numbers:
@@ -233,17 +237,6 @@ train.set <- na.omit(trainval.data[!trainval.data$Name %in% val.players, ])
 - The validation set has `r nrow(val.set)` rows and `r length(unique(val.set$Name))` unique players.
 - The test set has `r nrow(test.set)` rows and `r length(unique(test.set$Name))` unique players.  
 
-
-## Gradient Boosted Decision Trees Application
-
-In this section, we apply the gradient boosted decision trees. Specifically we examine the implementations: CatBoost, LightGBM, and XGBoost.
-
-VERY IMPORTANT
-README BEFORE BEGINNING:
-
-REMOVE THE "Season", "Name", AND, "Team" COLUMNS BEFORE TRAINING!!!!
-
-DO NOT USE THE TEST SET DURING YOUR ANALYSES - THIS WILL BE USED AT THE END
 
 ## Regularized Regression Application
 
@@ -343,5 +336,14 @@ kable(top_coef_df, caption = "Top 10 Ridge Regression Coefficients with Descript
 ```
 
 
+## Gradient Boosted Decision Trees Application
 
+In this section, we apply the gradient boosted decision trees. Specifically we examine the implementations: CatBoost, LightGBM, and XGBoost.
+
+VERY IMPORTANT
+README BEFORE BEGINNING:
+
+REMOVE THE "Season", "Name", AND, "Team" COLUMNS BEFORE TRAINING!!!!
+
+DO NOT USE THE TEST SET DURING YOUR ANALYSES - THIS WILL BE USED AT THE END
 
