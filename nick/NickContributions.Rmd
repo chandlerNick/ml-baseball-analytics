@@ -11,6 +11,9 @@ library(knitr)
 library(dplyr)
 library(corrplot)
 library(glmnet)
+library(xgboost)
+library(iml)
+library(dplyr)
 ```
 
 ## Introduction
@@ -281,22 +284,22 @@ for (a in elastic_alphas) {
 }
 
 # Find best model overall
-best_key <- names(results)[which.min(sapply(results, function(x) x$mse))]
-best_model <- results[[best_key]]$model
-best_mse <- round(results[[best_key]]$mse, 3)
+best_key_lr <- names(results)[which.min(sapply(results, function(x) x$mse))]
+best_model_lr <- results[[best_key_lr]]$model
+best_mse_lr <- round(results[[best_key_lr]]$mse, 3)
 ```
 
-Through this analysis, we find that `r best_key` is attains the minimum validation RMSE of all models tested at (rounded): `r sqrt(best_mse)`. Which means that the model mispredicts the next season's batting average by approximately `r sqrt(best_mse)*100`% on average. We examine the best model further, using classical diagnostics and model-agnostic XAI techniques.
+Through this analysis, we find that `r best_key_lr` is attains the minimum validation RMSE of all models tested at (rounded): `r round(sqrt(best_mse_lr),6)`. Which means that the model mispredicts the next season's batting average by approximately `r round(sqrt(best_mse_lr)*100,4)`% on average. We examine the best model further, using classical diagnostics and model-agnostic XAI techniques.
 
-The following is a plot of the lambda value in `r best_key` regression.
+The following is a plot of the lambda value in `r best_key_lr` regression.
 ```{r, echo=FALSE}
-plot(best_model)
+plot(best_model_lr)
 ```
 
 The top 10 coefficients (ranked in order of magnitude) are as follows:
 ```{r, echo=FALSE}
 # Get coefficients at best lambda
-coef_best <- coef(best_model, s = "lambda.min")
+coef_best <- coef(best_model_lr, s = "lambda.min")
 
 # Convert to data frame
 coef_df <- data.frame(
@@ -335,6 +338,9 @@ top_coef_df$Description <- c(
 kable(top_coef_df, caption = "Top 10 Ridge Regression Coefficients with Descriptions", row.names = FALSE)
 ```
 
+So as we see the most important coefficients are the largest when using regularized regression. It can be reasoned that they contribute more to the reduction of data fit error (Sum of Squared Errors) than they increase the total loss with the penalization of size, indicating that they are important in predicting the response. We examine the effect of the parameters on the predictions again using SHAP in the final comparison section.
+
+
 
 ## Gradient Boosted Decision Trees Application
 
@@ -346,4 +352,225 @@ README BEFORE BEGINNING:
 REMOVE THE "Season", "Name", AND, "Team" COLUMNS BEFORE TRAINING!!!!
 
 DO NOT USE THE TEST SET DURING YOUR ANALYSES - THIS WILL BE USED AT THE END
+
+```{r, warning=FALSE}
+# Drop columns and prepare matrices
+drop_cols <- c("Season", "Name", "Team", "next_AVG")
+
+x_train_xgb <- as.matrix(train.set[, !(names(train.set) %in% drop_cols)])
+y_train_xgb <- train.set$next_AVG
+
+x_val_xgb <- as.matrix(val.set[, !(names(val.set) %in% drop_cols)])
+y_val_xgb <- val.set$next_AVG
+
+# Define hyperparameter grids
+learning_rates <- c(0.001, 0.01, 0.05, 0.1, 0.2)
+subsamples <- c(0.5, 0.7, 1.0)
+ntrees <- c(50, 100, 200, 500)
+
+# Store results
+xgb_results <- list()
+
+# Function to train and evaluate
+train_eval_xgb <- function(eta_val, subsample_val, nrounds_val) {
+  dtrain <- xgb.DMatrix(data = x_train_xgb, label = y_train_xgb)
+  dval <- xgb.DMatrix(data = x_val_xgb, label = y_val_xgb)
+  
+  params <- list(
+    objective = "reg:squarederror",  # regression
+    eta = eta_val,
+    subsample = subsample_val,
+    max_depth = 6,                   # fixed for simplicity, can tune later
+    eval_metric = "rmse"
+  )
+  
+  xgb_fit <- xgb.train(
+    params = params,
+    data = dtrain,
+    nrounds = nrounds_val,
+    watchlist = list(val = dval),
+    verbose = 0
+  )
+  
+  pred_val <- predict(xgb_fit, dval)
+  mse_val <- mean((y_val_xgb - pred_val)^2)
+  
+  list(model = xgb_fit, mse = mse_val, eta = eta_val,
+       subsample = subsample_val, nrounds = nrounds_val)
+}
+
+# Grid search
+for (eta_val in learning_rates) {
+  for (sub_val in subsamples) {
+    for (n_val in ntrees) {
+      key <- paste0("xgb_eta_", eta_val, "_sub_", sub_val, "_ntree_", n_val)
+      xgb_results[[key]] <- train_eval_xgb(eta_val, sub_val, n_val)
+    }
+  }
+}
+
+# Find best model overall
+best_key_xgb <- names(xgb_results)[which.min(sapply(xgb_results, function(x) x$mse))]
+best_model_xgb <- xgb_results[[best_key_xgb]]$model
+best_mse_xgb <- round(xgb_results[[best_key_xgb]]$mse, 3)
+
+```
+
+Through this analysis, we find that `r best_key_xgb` attains the minimum validation RMSE of all XGBoost models tested at (rounded): `r round(sqrt(best_mse_xgb),6)`. This indicates that, on average, the model mispredicts the next season's target by approximately `r round(sqrt(best_mse_xgb)*100,4)`%. This is similar to the Regularized Regression model, perhaps indicating that linear relationships between the features and target variable are most prevalent. 
+We proceed to examine the best XGBoost model further using feature importance
+
+
+### Feature Importance (XGB-Specific)
+
+```{r, echo=FALSE}
+feature_names <- colnames(x_train_xgb)
+
+importance_matrix <- xgb.importance(feature_names=feature_names, model=best_model_xgb)
+
+top_features <- head(importance_matrix, 10)
+  top_features_df <- data.frame(
+  Feature = top_features$Feature,
+  Gain = round(top_features$Gain, 3),
+  Cover = round(top_features$Cover, 3),
+  Frequency = round(top_features$Frequency, 3)
+)
+
+top_features_df$Description <- c(
+  "Batting average – hits per at-bat",
+  "Strikeout percentage – proportion of plate appearances ending in strikeout",
+  "Walk percentage – proportion of plate appearances ending in walk",
+  "Isolated power – extra base hits per at-bat",
+  "Batting average on balls in play – luck-independent hitting measure",
+  "On-base percentage – times reaching base per plate appearance",
+  "On-base plus slugging – overall offensive contribution",
+  "Weighted on-base average – combines OBP and power into single metric",
+  "Slugging percentage – total bases per at-bat",
+  "Walk-to-strikeout ratio – plate discipline indicator"
+)
+
+kable(top_features_df, caption = "Top 10 XGBoost Feature Importances with Descriptions", row.names = FALSE)
+```
+
+The columns **`Gain`**, **`Cover`**, and **`Frequency`** in the XGBoost feature importance table have the following meanings (from R help):
+
+- **`Gain`**: Fractional contribution of each feature to the model based on the total gain of this feature’s splits. Higher values indicate more important predictive features.  
+- **`Cover`**: Relative number of observations affected by splits involving this feature.  
+- **`Frequency`**: Relative number of times a feature is used in the trees. Higher values mean the feature appears more often across all trees.
+
+```{r, echo = FALSE}
+max_gain <- importance_matrix[which.max(importance_matrix$Gain), ]
+max_cover <- importance_matrix[which.max(importance_matrix$Cover), ]
+max_freq <- importance_matrix[which.max(importance_matrix$Frequency), ]
+
+max_features_df <- data.frame(
+  Metric = c("Gain", "Cover", "Frequency"),
+  Feature = c(max_gain$Feature, max_cover$Feature, max_freq$Feature),
+  Score = c(round(max_gain$Gain, 3),
+  round(max_cover$Cover, 3),
+  round(max_freq$Frequency, 3))
+)
+
+max_features_df$Description <- c(
+  "Batting average – hits per at-bat",
+  "Strikeout percentage – proportion of plate appearances ending in strikeout",
+  "Games played – total games in the season"
+)
+
+kable(max_features_df, caption = "Features with Maximal Gain, Cover, and Frequency", row.names = FALSE)
+```
+
+We again see the last year's average at the top in terms of gain, indicating that it has the best predictive ability for predicting the next year's average when considering our models.
+
+## Comparison of Model Classes
+
+Here we evaluate the best model from each of the previous sections.
+
+### Test Set Evaluation
+
+We evaluate on the test data
+
+
+
+### SHAP Analysis
+
+We examine the SHAP values for each of the best models and specifically focus on a few microscopic explanations of the extreme predictions.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+
+# ---------------------------
+# Prepare predictor objects
+# ---------------------------
+
+# For glmnet / regularized regression
+# iml expects a data.frame for X and a predict function that returns numeric vector
+X_val_lr <- as.data.frame(x_val)  
+
+predict_lr <- function(model, newdata) {
+  # Returns a numeric vector of predictions
+  as.numeric(predict(model, s = "lambda.min", newx = as.matrix(newdata)))
+}
+
+predictor_lr <- Predictor$new(
+  model = best_model_lr,
+  data = X_val_lr,
+  y = y_val,
+  predict.fun = predict_lr
+)
+
+# For XGBoost
+X_val_xgb_df <- as.data.frame(x_val_xgb)
+
+predict_xgb <- function(model, newdata) {
+  predict(model, as.matrix(newdata))
+}
+
+predictor_xgb <- Predictor$new(
+  model = best_model_xgb,
+  data = X_val_xgb_df,
+  y = y_val_xgb,
+  predict.fun = predict_xgb
+)
+
+# ---------------------------
+# Compute global SHAP / feature importance
+# ---------------------------
+
+# Use FeatureImp (permutation-based importance) or Shapley for exact contributions
+# For global diagnostics, permutation importance is faster
+set.seed(123)
+
+imp_lr <- FeatureImp$new(predictor_lr, loss = "mse")
+imp_xgb <- FeatureImp$new(predictor_xgb, loss = "mse")
+
+# ---------------------------
+# Plot global importance
+# ---------------------------
+plot(imp_lr) + ggtitle("Regularized Regression - Global Feature Importance")
+plot(imp_xgb) + ggtitle("XGBoost - Global Feature Importance")
+
+# ---------------------------
+# Optional: exact Shapley values (slower)
+# ---------------------------
+# Example for first 10 features or subset of validation set
+shap_lr <- Shapley$new(predictor_lr, x.interest = X_val_lr[1, ])
+shap_lr$plot()  # plots feature contributions for this row
+
+shap_xgb <- Shapley$new(predictor_xgb, x.interest = X_val_xgb_df[1, ])
+shap_xgb$plot()
+
+
+```
+
+
+
+## Deployment of Best Model
+
+We examine a few 2025 season statistics to get predictions for our favorite players in the 2026 season. The results won't be available until next year!
+
+
+
+
+
 
