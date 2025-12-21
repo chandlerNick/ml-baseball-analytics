@@ -14,6 +14,8 @@ library(glmnet)
 library(xgboost)
 library(iml)
 library(dplyr)
+library(lightgbm)
+library(ggplot2)
 ```
 
 ## Introduction
@@ -480,6 +482,178 @@ kable(max_features_df, caption = "Features with Maximal Gain, Cover, and Frequen
 ```
 
 We again see the last year's average at the top in terms of gain, indicating that it has the best predictive ability for predicting the next year's average when considering our models.
+
+### LightGBM
+```{r, echo=FALSE}
+# lightgbm training and evaluation function
+train_eval_lgb <- function(x_train, y_train, x_val, y_val, params, nrounds=5000, early_stop=100) {
+  
+  dtrain <- lgb.Dataset(data = x_train, label = y_train)
+  dval   <- lgb.Dataset(data = x_val, label = y_val)
+  
+  evals <- list(train = dtrain, val = dval)
+  
+  model <- lgb.train(
+    params = params,
+    data = dtrain,
+    nrounds = nrounds,
+    valids = evals,
+    early_stopping_rounds = early_stop,
+    verbose = -1
+  )
+  
+  # Predictions on validation set
+  preds <- predict(model, x_val, num_iteration = model$best_iter)
+  rmse_val <- sqrt(mean((preds - y_val)^2))
+  
+  # Record train/val RMSE for plotting
+  train_rmse <- sapply(model$record_evals$train$rmse$eval, identity)
+  val_rmse   <- sapply(model$record_evals$val$rmse$eval, identity)
+  
+  return(list(
+    model = model,
+    rmse_val = rmse_val,
+    best_iter = model$best_iter,
+    train_rmse = train_rmse,
+    val_rmse = val_rmse
+  ))
+}
+
+# function for plotting train/val curves
+plot_rmse_curves <- function(train_rmse, val_rmse) {
+  df_plot <- data.frame(
+    Iteration = 1:length(train_rmse),
+    Train_RMSE = train_rmse,
+    Val_RMSE = val_rmse
+  )
+  
+  ggplot(df_plot, aes(x = Iteration)) +
+    geom_line(aes(y = Train_RMSE, color = "Train")) +
+    geom_line(aes(y = Val_RMSE, color = "Validation")) +
+    labs(y = "RMSE", title = "Train vs Validation RMSE") +
+    scale_color_manual(values = c("Train"="blue", "Validation"="red")) +
+    theme_minimal()
+  
+}
+
+#function for hyperparamter optimization
+hpo_lgb <- function(x_train, y_train, x_val, y_val, param_grid, nrounds=5000, early_stop=100) {
+  
+  best_rmse <- Inf
+  best_params <- NULL
+  best_model <- NULL
+  best_curves <- NULL
+  
+  for (i in 1:nrow(param_grid)) {
+    
+    params <- as.list(param_grid[i, ])
+    params$objective <- "regression"
+    params$metric <- "rmse"
+    
+    res <- train_eval_lgb(x_train, y_train, x_val, y_val, params, nrounds, early_stop)
+    
+    # Print both train and validation RMSE
+  #cat(sprintf(
+  #  "Grid %d/%d --> Train RMSE: %.4f | Val RMSE: %.4f\n",
+  #  i, nrow(param_grid),
+  #  tail(res$train_rmse, 1),  # last train RMSE (best iteration)
+  #  res$rmse_val
+  #))
+    
+    if (res$rmse_val < best_rmse) {
+      best_rmse <- res$rmse_val
+      best_params <- params
+      best_model <- res$model
+      best_curves <- list(train = res$train_rmse, val = res$val_rmse)
+    }
+  }
+  
+  return(list(
+    best_model = best_model,
+    best_params = best_params,
+    best_rmse = best_rmse,
+    train_rmse = best_curves$train,
+    val_rmse = best_curves$val
+  ))
+}
+
+print_best_lgb <- function(hpo_result) {
+  
+  cat("=====================================\n")
+  cat("          Best LightGBM Model        \n")
+  cat("=====================================\n")
+  
+  cat(sprintf("Best Validation RMSE : %.4f\n", hpo_result$best_rmse))
+  cat(sprintf("Best Training RMSE   : %.4f\n", tail(hpo_result$train_rmse, 1)))
+  cat(sprintf("Best Iteration       : %d\n", hpo_result$best_model$best_iter))
+  cat("\n")
+  cat("Selected Hyperparameters:\n")
+  
+  # Print each parameter neatly
+  for (param_name in names(hpo_result$best_params)) {
+    cat(sprintf("  %-20s : %s\n", param_name, hpo_result$best_params[[param_name]]))
+  }
+  
+  cat("=====================================\n")
+}
+```
+
+```{r, echo=FALSE}
+# parameter search grid for HPO
+param_grid <- expand.grid(
+  learning_rate = c(0.001, 0.005, 0.01),
+  max_depth = c(5,6,7),
+  num_leaves = c(8,16),
+  feature_fraction = c(0.8, 1)
+)
+
+
+# run the hpo
+best_lgb <- hpo_lgb(x_train, y_train, x_val, y_val, param_grid, nrounds = 1000, early_stop = 50)
+
+# plot train/val curves
+plot_rmse_curves(best_lgb$train_rmse, best_lgb$val_rmse)
+
+# print best results
+print_best_lgb(best_lgb)
+```
+### LightGBM Feature Importance
+
+```{r, echo=FALSE}
+# feature importance
+lgb_importance <- lgb.importance(best_lgb$best_model)
+lgb_importance_sorted <- lgb_importance[order(-lgb_importance$Gain), ]
+
+# keep top n important features
+topN <- 10
+lgb_top_importance <- lgb_importance_sorted[1:topN, ]
+
+# descriptions of top 10 features
+lgb_feature_descriptions <- c(
+  "Batting average – hits per at-bat",                          # AVG
+  "Strikeout percentage – proportion of plate appearances ending in strikeout",  # K.Percent
+  "Intentional walks – plate appearances ending in intentional walk",            # IBB
+  "Strikeouts – total number of strikeouts",                     # SO
+  "Batting average on balls in play – luck-independent hitting measure",         # BABIP
+  "Weighted runs above average – overall offensive contribution",               # wRAA
+  "Isolated power – extra base hits per at-bat",                 # ISO
+  "Sacrifice flies – fly balls scored for a run",               # SF
+  "Grounded into double play – number of double plays hit into", # GDP
+  "At-bats – total plate appearances minus walks, hits, etc."   # AB
+)
+
+lgb_top_importance$Descriptions <- lgb_feature_descriptions
+
+# Print nicely in RMarkdown
+kable(
+  lgb_top_importance,
+  digits = 4,
+  caption = sprintf("LightGBM - Top %d Features by Gain", topN),
+  align = c("l", "r", "r", "r")  # left align Feature, right align numbers
+)
+
+lgb.plot.importance(lgb_importance)
+```
 
 ## Comparison of Model Classes
 
