@@ -663,14 +663,77 @@ Here we evaluate the best model from each of the previous sections.
 
 We evaluate on the test data
 
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(xgboost)
+library(lightgbm)
+
+#Prepare test data same columns as training
+drop_cols <- c("Season", "Name", "Team", "next_AVG")
+x_test <- as.matrix(test.set[, !(names(test.set) %in% drop_cols)])
+y_test <- test.set$next_AVG
+
+#Metrics
+rmse <- function(y, yhat) sqrt(mean((y - yhat)^2))
+r2   <- function(y, yhat) 1 - sum((y - yhat)^2) / sum((y - mean(y))^2)
+
+#One-to-one plot function
+one_to_one_plot <- function(actual, pred, title_text) {
+  df <- data.frame(Actual = actual, Predicted = pred)
+  ggplot(df, aes(x = Actual, y = Predicted)) +
+    geom_point(alpha = 0.5) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    labs(
+      title = title_text,
+      subtitle = paste0("RMSE = ", round(rmse(actual, pred), 5),
+                        " | R² = ", round(r2(actual, pred), 5)),
+      x = "Actual next_AVG",
+      y = "Predicted next_AVG"
+    ) +
+    theme_minimal()
+}
+
+# 1) Regularized Regression (glmnet)
+pred_lr <- as.numeric(predict(best_model_lr, s = "lambda.min", newx = x_test))
+
+# 2) XGBoost
+pred_xgb <- as.numeric(predict(best_model_xgb, xgb.DMatrix(x_test)))
+
+# 3) LightGBM
+pred_lgb <- as.numeric(predict(best_lgb$best_model, x_test,
+                               num_iteration = best_lgb$best_model$best_iter))
+
+#Results table
+results_test <- data.frame(
+  Model = c("Regularized Regression (glmnet)", "XGBoost", "LightGBM"),
+  RMSE = c(rmse(y_test, pred_lr), rmse(y_test, pred_xgb), rmse(y_test, pred_lgb)),
+  R_Squared = c(r2(y_test, pred_lr), r2(y_test, pred_xgb), r2(y_test, pred_lgb))
+)
+
+print(results_test)
+knitr::kable(results_test, digits = 5, caption = "Test Set Performance (RMSE and R-Squared)")
+
+#Plots
+p_lr  <- one_to_one_plot(y_test, pred_lr,  "Test Set: glmnet (Regularized Regression)")
+p_xgb <- one_to_one_plot(y_test, pred_xgb, "Test Set: XGBoost")
+p_lgb <- one_to_one_plot(y_test, pred_lgb, "Test Set: LightGBM")
+
+print(p_lr);  print(p_xgb);  print(p_lgb)
+
+#Save plots
+ggsave("test_one_to_one_glmnet.png",  p_lr,  width = 6, height = 5)
+ggsave("test_one_to_one_xgboost.png", p_xgb, width = 6, height = 5)
+ggsave("test_one_to_one_lightgbm.png",p_lgb, width = 6, height = 5)
+
+
 
 
 ### SHAP Analysis
 
-We examine the SHAP values for each of the best models and specifically focus on a few microscopic explanations of the extreme predictions.
+#We examine the SHAP values for each of the best models and #specifically focus on a few microscopic explanations of the #extreme predictions.
 
 
-```{r, message=FALSE, warning=FALSE}
+#```{r, message=FALSE, warning=FALSE}
 
 
 # ---------------------------
