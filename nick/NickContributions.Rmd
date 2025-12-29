@@ -16,6 +16,7 @@ library(iml)
 library(dplyr)
 library(lightgbm)
 library(ggplot2)
+library(gridExtra)
 ```
 
 ## Introduction
@@ -725,7 +726,140 @@ ggsave("test_one_to_one_glmnet.png",  p_lr,  width = 6, height = 5)
 ggsave("test_one_to_one_xgboost.png", p_xgb, width = 6, height = 5)
 ggsave("test_one_to_one_lightgbm.png",p_lgb, width = 6, height = 5)
 
+```
 
+### SHAP / IML Analysis (Model-agnostic, TEST set, iml)
+
+We examine model-agnostic explainability results using the *iml* package on the *test set* only.  
+This includes global permutation feature importance, partial dependence feature effects, and microscopic Shapley explanations.
+
+```{r xai_iml_test, message=FALSE, warning=FALSE}
+# ---------------------------
+# Prepare TEST-set predictor objects (iml)
+# ---------------------------
+drop_cols <- c("Season", "Name", "Team", "next_AVG")
+x_test <- as.matrix(test.set[, !(names(test.set) %in% drop_cols)])
+y_test <- test.set$next_AVG
+X_test_df <- as.data.frame(x_test)
+
+# predict functions for iml
+predict_lr_fun <- function(model, newdata) {
+  as.numeric(predict(model, s = "lambda.min", newx = as.matrix(newdata)))
+}
+
+predict_xgb_fun <- function(model, newdata) {
+  as.numeric(predict(model, xgb.DMatrix(data = as.matrix(newdata))))
+}
+
+# iml predictors on TEST set (same X for both models)
+predictor_lr_test <- Predictor$new(
+  model = best_model_lr,
+  data = X_test_df,
+  y = y_test,
+  predict.fun = predict_lr_fun
+)
+
+predictor_xgb_test <- Predictor$new(
+  model = best_model_xgb,
+  data = X_test_df,
+  y = y_test,
+  predict.fun = predict_xgb_fun
+)
+
+# ---------------------------
+# Compute predictions + errors on TEST set
+# ---------------------------
+pred_test_lr <- predict_lr_fun(best_model_lr, X_test_df)
+pred_test_xgb <- predict_xgb_fun(best_model_xgb, X_test_df)
+
+abs_err_lr <- abs(y_test - pred_test_lr)
+abs_err_xgb <- abs(y_test - pred_test_xgb)
+
+# ---------------------------
+# Global feature importance (Permutation Importance)
+# ---------------------------
+set.seed(123)
+imp_lr_test <- FeatureImp$new(predictor_lr_test, loss = "mse", n.repetitions = 10)
+imp_xgb_test <- FeatureImp$new(predictor_xgb_test, loss = "mse", n.repetitions = 10)
+
+p_imp_lr <- plot(imp_lr_test) + ggtitle("Permutation Feature Importance (TEST) - Regularized Regression")
+p_imp_xgb <- plot(imp_xgb_test) + ggtitle("Permutation Feature Importance (TEST) - XGBoost")
+
+grid.arrange(p_imp_lr, p_imp_xgb, ncol = 2)
+
+# Top-10 importance comparison table
+top10_lr <- head(imp_lr_test$results[order(-imp_lr_test$results$importance), c("feature","importance")], 10)
+top10_xgb <- head(imp_xgb_test$results[order(-imp_xgb_test$results$importance), c("feature","importance")], 10)
+
+top10_lr$importance <- round(top10_lr$importance, 4)
+top10_xgb$importance <- round(top10_xgb$importance, 4)
+
+imp_compare <- data.frame(
+  Rank = 1:10,
+  LR_Feature = top10_lr$feature,
+  LR_Importance = top10_lr$importance,
+  XGB_Feature = top10_xgb$feature,
+  XGB_Importance = top10_xgb$importance
+)
+
+kable(imp_compare, caption = "Top 10 features by permutation importance (TEST set, iml)")
+
+# ---------------------------
+# Feature effects (Partial Dependence Plots) for 3 selected features
+# ---------------------------
+feat_candidates <- unique(c(top10_lr$feature[1:5], top10_xgb$feature[1:5]))
+pdp_features <- feat_candidates[1:3]
+
+pdp_plots <- list()
+for (i in seq_along(pdp_features)) {
+  f <- pdp_features[i]
+  fe_lr <- FeatureEffect$new(predictor_lr_test, feature = f, method = "pdp", grid.size = 20)
+  fe_xg <- FeatureEffect$new(predictor_xgb_test, feature = f, method = "pdp", grid.size = 20)
+  pdp_plots[[2*i - 1]] <- plot(fe_lr) + ggtitle(paste("PDP (TEST) - LR:", f))
+  pdp_plots[[2*i]]     <- plot(fe_xg) + ggtitle(paste("PDP (TEST) - XGB:", f))
+}
+do.call(grid.arrange, c(pdp_plots, ncol = 2))
+
+# ---------------------------
+# Microscopic explanations (Shapley) for extreme predictions on TEST set
+# ---------------------------
+rmse_fn <- function(y, yhat) sqrt(mean((y - yhat)^2))
+best_model_name <- if (rmse_fn(y_test, pred_test_lr) <= rmse_fn(y_test, pred_test_xgb)) "LR" else "XGB"
+
+idx_high <- which.max(pred_test_xgb)
+idx_low  <- which.min(pred_test_xgb)
+idx_worst <- if (best_model_name == "LR") which.max(abs_err_lr) else which.max(abs_err_xgb)
+
+case_indices <- unique(c(idx_high, idx_low, idx_worst))
+case_indices <- case_indices[1:3]
+
+case_tbl <- data.frame(
+  Case = c("Highest predicted (XGB)", "Lowest predicted (XGB)", paste0("Largest error (", best_model_name, ")")),
+  Index = case_indices,
+  Actual = round(y_test[case_indices], 4),
+  Pred_LR = round(pred_test_lr[case_indices], 4),
+  Pred_XGB = round(pred_test_xgb[case_indices], 4),
+  AbsErr_LR = round(abs_err_lr[case_indices], 4),
+  AbsErr_XGB = round(abs_err_xgb[case_indices], 4)
+)
+kable(case_tbl, caption = "Chosen test-set cases for Shapley explanations")
+
+set.seed(123)
+for (idx in case_indices) {
+  x_interest <- X_test_df[idx, , drop = FALSE]
+  shap_lr <- Shapley$new(predictor_lr_test, x.interest = x_interest, sample.size = 200)
+  shap_xg <- Shapley$new(predictor_xgb_test, x.interest = x_interest, sample.size = 200)
+  
+  p_lr <- shap_lr$plot() + ggtitle(paste("Shapley (TEST) - LR - index", idx))
+  p_xg <- shap_xg$plot() + ggtitle(paste("Shapley (TEST) - XGB - index", idx))
+  
+  grid.arrange(p_lr, p_xg, ncol = 2)
+}
+```
+
+## Deployment of Best Model
+
+We examine a few 2025 season statistics to get predictions for our favorite players in the 2026 season. The results won't be available until next year!
 
 
 ### SHAP Analysis
