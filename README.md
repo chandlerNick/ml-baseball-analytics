@@ -1,6 +1,6 @@
 # ml-baseball-analytics
 
-Analysis of historical baseball data using machine learning. Note this is a messy repo, it isn't really intended t odemonstrate production grade git usage but to produce a scientific report for a course. The main files of interest are:
+Analysis of historical baseball data using machine learning. Note this is a messy repo, it isn't really intended to demonstrate production grade git usage but to produce a scientific report for a course. The main files of interest are:
 - `nick/ML2_Project.pdf`
 - `nick/ML2_Project.Rmd`
 
